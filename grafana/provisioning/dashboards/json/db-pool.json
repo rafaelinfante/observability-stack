@@ -1,0 +1,78 @@
+{
+  "uid": "pgs-db-pool",
+  "title": "Payment Gateway — DB Connection Pool",
+  "tags": ["payment-gateway", "database", "hikaricp"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Connections",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "hikaricp_connections_active{job=\"payment-gateway-service\"}", "legendFormat": "active" },
+        { "refId": "B", "expr": "hikaricp_connections_idle{job=\"payment-gateway-service\"}", "legendFormat": "idle" },
+        { "refId": "C", "expr": "hikaricp_connections_pending{job=\"payment-gateway-service\"}", "legendFormat": "pending" },
+        { "refId": "D", "expr": "hikaricp_connections{job=\"payment-gateway-service\"}", "legendFormat": "total" },
+        { "refId": "E", "expr": "hikaricp_connections_max{job=\"payment-gateway-service\"}", "legendFormat": "max" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Pending acquisitions",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "hikaricp_connections_pending{job=\"payment-gateway-service\"}" } ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 } ] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Connection timeouts",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "increase(hikaricp_connections_timeout_total{job=\"payment-gateway-service\"}[1h])" } ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Average connection acquire time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "rate(hikaricp_connections_acquire_seconds_sum{job=\"payment-gateway-service\"}[$__rate_interval]) / clamp_min(rate(hikaricp_connections_acquire_seconds_count{job=\"payment-gateway-service\"}[$__rate_interval]), 1)", "legendFormat": "acquire" } ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Average connection usage time",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "rate(hikaricp_connections_usage_seconds_sum{job=\"payment-gateway-service\"}[$__rate_interval]) / clamp_min(rate(hikaricp_connections_usage_seconds_count{job=\"payment-gateway-service\"}[$__rate_interval]), 1)", "legendFormat": "usage" } ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    }
+  ]
+}

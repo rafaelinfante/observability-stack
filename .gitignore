@@ -1,0 +1,21 @@
+# Local environment overrides
+.env
+
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Artifacts produced locally by the CI steps (SBOM, scanners)
+sbom*.json
+sbom*.spdx*
+trivy-results*
+*.sarif
+
+# The OTel agent is pulled into the image at build time; never vendor it
+opentelemetry-javaagent.jar
+
+*.log

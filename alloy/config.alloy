@@ -1,0 +1,67 @@
+// Alloy replaces the retired Promtail. It discovers containers over the Docker
+// socket, tails their stdout/stderr, parses the service's ECS JSON, and ships
+// everything to Loki. trace_id / span_id (injected into the logs by the OTel
+// agent) ride along as structured metadata so a log can jump to its trace.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // /payment-gateway-service -> payment-gateway-service
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // Carry the compose service name as a stable label.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  labels     = { job = "docker" }
+  forward_to = [loki.process.parse.receiver]
+}
+
+loki.process "parse" {
+  // The service logs ECS JSON (LOG_FORMAT=ecs); other containers pass through.
+  stage.match {
+    selector = "{service_name=\"payment-gateway-service\"}"
+
+    stage.json {
+      expressions = {
+        level    = "log.level",
+        trace_id = "trace_id",
+        span_id  = "span_id",
+      }
+    }
+
+    // Low-cardinality label for filtering; ids stay as structured metadata.
+    stage.labels {
+      values = { level = "" }
+    }
+
+    stage.structured_metadata {
+      values = {
+        trace_id = "",
+        span_id  = "",
+      }
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

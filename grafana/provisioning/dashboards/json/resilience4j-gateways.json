@@ -1,0 +1,84 @@
+{
+  "uid": "pgs-resilience4j",
+  "title": "Payment Gateway — Resilience4j Breakers",
+  "tags": ["payment-gateway", "resilience4j"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "gateway",
+        "label": "Gateway",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(resilience4j_circuitbreaker_state{job=\"payment-gateway-service\"}, name)", "refId": "gateway" },
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "refresh": 2,
+        "sort": 1,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Circuit breaker state",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (name) (resilience4j_circuitbreaker_state{job=\"payment-gateway-service\", name=~\"$gateway\", state=\"open\"}) * 2 + sum by (name) (resilience4j_circuitbreaker_state{job=\"payment-gateway-service\", name=~\"$gateway\", state=\"half_open\"})", "legendFormat": "{{name}}" } ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" }, "1": { "text": "HALF-OPEN", "color": "yellow" }, "2": { "text": "OPEN", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 } ] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Calls by outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (name, kind) (rate(resilience4j_circuitbreaker_calls_seconds_count{job=\"payment-gateway-service\", name=~\"$gateway\"}[$__rate_interval]))", "legendFormat": "{{name}} {{kind}}" } ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Failure rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "resilience4j_circuitbreaker_failure_rate{job=\"payment-gateway-service\", name=~\"$gateway\"}", "legendFormat": "{{name}}" } ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "fillOpacity": 5 } } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Retry calls by outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (name, kind) (rate(resilience4j_retry_calls_total{job=\"payment-gateway-service\", name=~\"$gateway\"}[$__rate_interval]))", "legendFormat": "{{name}} {{kind}}" } ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Buffered calls in sliding window",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (name, kind) (resilience4j_circuitbreaker_buffered_calls{job=\"payment-gateway-service\", name=~\"$gateway\"})", "legendFormat": "{{name}} {{kind}}" } ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 0 } } }
+    }
+  ]
+}
