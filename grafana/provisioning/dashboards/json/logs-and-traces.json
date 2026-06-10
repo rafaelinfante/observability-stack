@@ -1,0 +1,49 @@
+{
+  "uid": "pgs-logs-traces",
+  "title": "Payment Gateway — Logs & Traces",
+  "tags": ["payment-gateway", "logs", "traces"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to correlate",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Logs are ECS JSON shipped by Alloy. Each line carries a **trace_id** (injected by the OpenTelemetry agent). Click a log line, then the **View trace** link to open it in Tempo — from there, pivot back to its logs or to the request-rate metric. Recent traces are listed below."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [ { "refId": "A", "expr": "sum by (level) (count_over_time({service_name=\"payment-gateway-service\"}[$__interval]))", "legendFormat": "{{level}}" } ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Service logs",
+      "gridPos": { "h": 11, "w": 14, "x": 0, "y": 11 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [ { "refId": "A", "expr": "{service_name=\"payment-gateway-service\"}", "queryType": "range" } ],
+      "options": { "showTime": true, "wrapLogMessage": true, "dedupStrategy": "none", "enableLogDetails": true, "sortOrder": "Descending" }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Recent traces",
+      "gridPos": { "h": 11, "w": 10, "x": 14, "y": 11 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [ { "refId": "A", "queryType": "traceql", "query": "{resource.service.name=\"payment-gateway-service\"}", "limit": 20, "tableType": "traces" } ]
+    }
+  ]
+}
