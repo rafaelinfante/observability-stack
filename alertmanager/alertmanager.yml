@@ -1,0 +1,27 @@
+route:
+  receiver: alert-logger
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  # Demo receiver: an echo container that logs every notification payload, so you
+  # can watch alerts (and their resolutions) arrive end to end. Swap it for a real
+  # channel in production. A Slack example is sketched below.
+  - name: alert-logger
+    webhook_configs:
+      - url: http://alert-logger:9095/
+        send_resolved: true
+    # slack_configs:
+    #   - api_url: <your Slack incoming-webhook URL>
+    #     channel: '#payments-alerts'
+    #     send_resolved: true
+    #     title: '{{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+    #     text: '{{ range .Alerts }}{{ .Annotations.description }}{{ "\n" }}{{ end }}'
+
+# Don't page on the warning version of a problem that already fired as critical.
+inhibit_rules:
+  - source_matchers: ['severity = "critical"']
+    target_matchers: ['severity = "warning"']
+    equal: ['alertname']

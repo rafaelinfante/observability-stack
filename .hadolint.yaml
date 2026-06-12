@@ -1,0 +1,4 @@
+ignored:
+  # The runtime layer installs only curl for the healthcheck; pinning its apt
+  # version across base-image refreshes is more churn than it's worth here.
+  - DL3008

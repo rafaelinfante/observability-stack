@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  # Stage 1 — the config is the product, so lint and validate all of it.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Prometheus config and alert rules
+        run: |
+          docker run --rm \
+            -v "$PWD/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" \
+            --entrypoint promtool prom/prometheus:v3.12.0 \
+            check config /etc/prometheus/prometheus.yml
+          docker run --rm \
+            -v "$PWD/prometheus/rules:/etc/prometheus/rules:ro" \
+            --entrypoint promtool prom/prometheus:v3.12.0 \
+            check rules /etc/prometheus/rules/alerts.yml
+
+      - name: Validate Alertmanager config
+        run: |
+          docker run --rm \
+            -v "$PWD/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" \
+            --entrypoint amtool prom/alertmanager:v0.28.1 \
+            check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: images/service-otel/Dockerfile
+          config: .hadolint.yaml
+
+      - name: Lint YAML
+        run: |
+          pipx install yamllint
+          yamllint -c .yamllint.yml \
+            alertmanager grafana loki prometheus tempo docker-compose.yml .github
+
+      - name: Validate Grafana dashboard JSON
+        run: |
+          rc=0
+          for f in grafana/provisioning/dashboards/json/*.json; do
+            if jq -e '.title and .uid and (.panels | length > 0)' "$f" >/dev/null; then
+              echo "ok   $f"
+            else
+              echo "BAD  $f (must be valid JSON with title, uid and panels)"; rc=1
+            fi
+          done
+          exit $rc
+
+  # Stage 2 — build the agent-augmented image, then prove the supply chain.
+  build-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build agent-augmented image
+        run: docker build -f images/service-otel/Dockerfile -t payment-gateway-otel:ci .
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: payment-gateway-otel:ci
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+      - name: Vulnerability scan (Trivy) — SARIF for code scanning
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: payment-gateway-otel:ci
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: true
+
+      - name: Upload Trivy results
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Vulnerability gate (Trivy) — fail on fixable CRITICAL
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: payment-gateway-otel:ci
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  # Stage 3 — optional quality gate. Runs only when SONAR_TOKEN is set, so forks
+  # and contributors without the secret stay green.
+  sonar:
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: SonarCloud quality gate
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+
+  # Stage 4 — boot the whole stack and assert it actually works.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Bring up the stack
+        run: docker compose up -d --build
+
+      - name: Run smoke test
+        run: ./scripts/smoke-test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # Stage 5 — publish the augmented image to GHCR (push to a default branch only).
+  deploy:
+    needs: [validate, build-scan, smoke]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: images/service-otel/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/payment-gateway-otel:latest
+            ghcr.io/${{ github.repository_owner }}/payment-gateway-otel:${{ github.sha }}

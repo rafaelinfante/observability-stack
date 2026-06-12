@@ -1,0 +1,77 @@
+groups:
+  - name: payment-gateway-service
+    rules:
+      # The service stopped responding to scrapes. This is the catch-all that
+      # mirrors the Uptime-Kuma-style "is it up?" check, but as code.
+      - alert: ServiceInstanceDown
+        expr: up{job="payment-gateway-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "payment-gateway-service is down"
+          description: "Prometheus could not scrape {{ $labels.instance }} for over a minute."
+
+      # More than 5% of responses are server errors over the last 5 minutes.
+      - alert: HighHttpErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="payment-gateway-service", status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count{job="payment-gateway-service"}[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "5xx error rate above 5%"
+          description: "{{ $value | humanizePercentage }} of HTTP responses are 5xx over the last 5 minutes."
+
+      # Tail latency regression. Needs the http.server.requests histogram, which
+      # the agent-augmented image turns on at runtime.
+      - alert: HighRequestLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_server_requests_seconds_bucket{job="payment-gateway-service"}[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 request latency above 1s"
+          description: "99th percentile latency is {{ $value | humanizeDuration }} over the last 5 minutes."
+
+      # A gateway's circuit breaker tripped open: calls to it are being short-circuited.
+      - alert: GatewayCircuitBreakerOpen
+        expr: resilience4j_circuitbreaker_state{job="payment-gateway-service", state="open"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker open for gateway {{ $labels.name }}"
+          description: "The Resilience4j breaker for gateway '{{ $labels.name }}' has been open for over a minute."
+
+      - alert: JvmHeapPressure
+        expr: |
+          sum by (instance) (
+            jvm_memory_used_bytes{job="payment-gateway-service", area="heap"}
+              and on (instance, id) (jvm_memory_max_bytes{job="payment-gateway-service", area="heap"} > 0)
+          )
+            / sum by (instance) (jvm_memory_max_bytes{job="payment-gateway-service", area="heap"} > 0)
+            > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM heap above 90%"
+          description: "Heap usage on {{ $labels.instance }} has been above 90% for 10 minutes."
+
+      - alert: DbConnectionPoolNearExhaustion
+        expr: |
+          hikaricp_connections_active{job="payment-gateway-service"}
+            / hikaricp_connections_max{job="payment-gateway-service"}
+            > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Active DB connections on {{ $labels.instance }} have been above 90% of the pool for 5 minutes."
