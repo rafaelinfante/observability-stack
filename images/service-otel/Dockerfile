@@ -11,7 +11,7 @@ RUN mvn -B -q dependency:go-offline
 COPY payment-gateway-service/src ./src
 RUN mvn -B -q clean package -DskipTests
 
-FROM eclipse-temurin:21-jre AS runtime
+FROM eclipse-temurin:25-jre AS runtime
 WORKDIR /app
 
 # Pinned agent release. Bump deliberately, not automatically.
