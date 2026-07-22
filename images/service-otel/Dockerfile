@@ -4,7 +4,7 @@
 # own. That gives us distributed tracing (HTTP, JDBC, Tomcat) and trace_id /
 # span_id in the logs without a single source change in the service.
 
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3-eclipse-temurin-26 AS build
 WORKDIR /build
 COPY payment-gateway-service/pom.xml .
 RUN mvn -B -q dependency:go-offline
