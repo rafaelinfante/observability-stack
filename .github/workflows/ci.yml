@@ -36,7 +36,7 @@ jobs:
             check-config /etc/alertmanager/alertmanager.yml
 
       - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: images/service-otel/Dockerfile
           config: .hadolint.yaml
